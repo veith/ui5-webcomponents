@@ -1,4 +1,5 @@
 import Integer from "@ui5/webcomponents-base/dist/types/Integer.js";
+import ResizeHandler from "@ui5/webcomponents-base/dist/delegate/ResizeHandler.js";
 import Popup from "./Popup.js";
 import PopoverPlacementType from "./types/PopoverPlacementType.js";
 import PopoverVerticalAlign from "./types/PopoverVerticalAlign.js";
@@ -250,6 +251,12 @@ const metadata = {
  * @public
  */
 class Popover extends Popup {
+	constructor() {
+		super();
+
+		this._handleResize = this.handleResize.bind(this);
+	}
+
 	static get metadata() {
 		return metadata;
 	}
@@ -266,6 +273,14 @@ class Popover extends Popup {
 		return 10; // px
 	}
 
+	onEnterDOM() {
+		ResizeHandler.register(this, this._handleResize);
+	}
+
+	onExitDOM() {
+		ResizeHandler.deregister(this, this._handleResize);
+	}
+
 	isOpenerClicked(event) {
 		const target = event.target;
 		return target === this._opener || (target.getFocusDomRef && target.getFocusDomRef() === this._opener) || event.composedPath().indexOf(this._opener) > -1;
@@ -276,15 +291,18 @@ class Popover extends Popup {
 	 * @param {HTMLElement} opener the element that the popover is opened by
 	 * @param {boolean} preventInitialFocus prevents applying the focus inside the popover
 	 * @public
+	 * @async
+	 * @returns {Promise} Resolved when the popover is open
 	 */
-	openBy(opener, preventInitialFocus = false) {
+	async openBy(opener, preventInitialFocus = false) {
 		if (!opener || this.opened) {
 			return;
 		}
 
 		this._opener = opener;
+		this._openerRect = opener.getBoundingClientRect();
 
-		super.open(preventInitialFocus);
+		await super.open(preventInitialFocus);
 	}
 
 	/**
@@ -332,21 +350,36 @@ class Popover extends Popup {
 			&& openerRect.right === 0;
 	}
 
+	handleResize() {
+		if (this.opened) {
+			this.reposition();
+		}
+	}
+
 	reposition() {
 		this.show();
 	}
 
 	show() {
 		let placement;
-		const popoverSize = this.popoverSize;
-		const openerRect = this._opener.getBoundingClientRect();
+		const popoverSize = this.getPopoverSize();
 
-		if (this.shouldCloseDueToNoOpener(openerRect) && this.isFocusWithin()) {
+		if (popoverSize.width === 0 || popoverSize.height === 0) {
+			// size can not be determined properly at this point, popover will be shown with the next reposition
+			return;
+		}
+
+		if (this.isOpen()) {
+			// update opener rect if it was changed during the popover being opened
+			this._openerRect = this._opener.getBoundingClientRect();
+		}
+
+		if (this.shouldCloseDueToNoOpener(this._openerRect) && this.isFocusWithin()) {
 			// reuse the old placement as the opener is not available,
 			// but keep the popover open as the focus is within
 			placement = this._oldPlacement;
 		} else {
-			placement = this.calcPlacement(openerRect, popoverSize);
+			placement = this.calcPlacement(this._openerRect, popoverSize);
 		}
 
 		const stretching = this.horizontalAlign === PopoverHorizontalAlign.Stretch;
@@ -379,7 +412,7 @@ class Popover extends Popup {
 		}
 	}
 
-	get popoverSize() {
+	getPopoverSize() {
 		let width,
 			height;
 		let rect = this.getBoundingClientRect();
@@ -391,16 +424,14 @@ class Popover extends Popup {
 			return { width, height };
 		}
 
-		this.style.visibility = "hidden";
 		this.style.display = "block";
+		this.style.top = "-10000px";
+		this.style.left = "-10000px";
 
 		rect = this.getBoundingClientRect();
 
 		width = rect.width;
 		height = rect.height;
-
-		this.hide();
-		this.style.visibility = "visible";
 
 		return { width, height };
 	}
@@ -498,9 +529,7 @@ class Popover extends Popup {
 
 		let maxContentHeight = Math.round(maxHeight);
 
-		const hasHeader = this.header.length || this.headerText;
-
-		if (hasHeader) {
+		if (this._displayHeader) {
 			const headerDomRef = this.shadowRoot.querySelector(".ui5-popup-header-root")
 				|| this.shadowRoot.querySelector(".ui5-popup-header-text");
 
@@ -511,9 +540,7 @@ class Popover extends Popup {
 
 		this._maxContentHeight = maxContentHeight;
 
-		const arrowXCentered = this.horizontalAlign === PopoverHorizontalAlign.Center || this.horizontalAlign === PopoverHorizontalAlign.Stretch;
-		const arrowTranslateX = isVertical && arrowXCentered ? targetRect.left + targetRect.width / 2 - left - popoverSize.width / 2 : 0;
-		const arrowTranslateY = !isVertical ? targetRect.top + targetRect.height / 2 - top - popoverSize.height / 2 : 0;
+		const arrowPos = this.getArrowPosition(targetRect, popoverSize, left, top, isVertical);
 
 		if (this._left === undefined || Math.abs(this._left - left) > 1.5) {
 			this._left = Math.round(left);
@@ -524,11 +551,48 @@ class Popover extends Popup {
 		}
 
 		return {
-			arrowX: Math.round(arrowTranslateX),
-			arrowY: Math.round(arrowTranslateY),
+			arrowX: arrowPos.x,
+			arrowY: arrowPos.y,
 			top: this._top,
 			left: this._left,
 			placementType,
+		};
+	}
+
+	/**
+	 * Calculates the position for the arrow.
+	 * @private
+	 * @param targetRect BoundingClientRect of the target element
+	 * @param popoverSize Width and height of the popover
+	 * @param left Left offset of the popover
+	 * @param top Top offset of the popover
+	 * @param isVertical if the popover is positioned vertically to the target element
+	 * @returns {{x: number, y: number}} Arrow's coordinates
+	 */
+	getArrowPosition(targetRect, popoverSize, left, top, isVertical) {
+		let arrowXCentered = this.horizontalAlign === PopoverHorizontalAlign.Center || this.horizontalAlign === PopoverHorizontalAlign.Stretch;
+
+		if (this.horizontalAlign === PopoverHorizontalAlign.Right && left <= targetRect.left) {
+			arrowXCentered = true;
+		}
+
+		if (this.horizontalAlign === PopoverHorizontalAlign.Left && left + popoverSize.width >= targetRect.left + targetRect.width) {
+			arrowXCentered = true;
+		}
+
+		let arrowTranslateX = 0;
+		if (isVertical && arrowXCentered) {
+			arrowTranslateX = targetRect.left + targetRect.width / 2 - left - popoverSize.width / 2;
+		}
+
+		let arrowTranslateY = 0;
+		if (!isVertical) {
+			arrowTranslateY = targetRect.top + targetRect.height / 2 - top - popoverSize.height / 2;
+		}
+
+		return {
+			x: Math.round(arrowTranslateX),
+			y: Math.round(arrowTranslateY),
 		};
 	}
 
@@ -595,6 +659,7 @@ class Popover extends Popup {
 		switch (this.horizontalAlign) {
 		case PopoverHorizontalAlign.Center:
 		case PopoverHorizontalAlign.Stretch:
+
 			left = targetRect.left - (popoverSize.width - targetRect.width) / 2;
 			break;
 		case PopoverHorizontalAlign.Left:

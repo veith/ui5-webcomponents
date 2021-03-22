@@ -14,7 +14,7 @@
 .ui5-wiz-content {
 	position: relative;
 	overflow: auto;
-	height: 100%;
+	height: calc(100% - 4rem); /* the navigation height is 4rem */
 	box-sizing: border-box;
 	background: var(--sapBackgroundColor);
 }
@@ -68,7 +68,7 @@
 	-moz-user-select: none;
 	-ms-user-select: none;
 	user-select: none;
-	background: #fff;
+	background-color: var(--sapObjectHeader_Background);
 	font-size: .875rem;
 	box-shadow: var(--sapContent_HeaderShadow);
 	outline: none;

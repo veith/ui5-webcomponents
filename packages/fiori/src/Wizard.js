@@ -7,6 +7,7 @@ import NavigationMode from "@ui5/webcomponents-base/dist/types/NavigationMode.js
 import Float from "@ui5/webcomponents-base/dist/types/Float.js";
 import ResizeHandler from "@ui5/webcomponents-base/dist/delegate/ResizeHandler.js";
 import { isPhone } from "@ui5/webcomponents-base/dist/Device.js";
+import debounce from "@ui5/webcomponents-base/dist/util/debounce.js";
 import Button from "@ui5/webcomponents/dist/Button.js";
 import ResponsivePopover from "@ui5/webcomponents/dist/ResponsivePopover.js";
 
@@ -25,7 +26,6 @@ import WizardTemplate from "./generated/templates/WizardTemplate.lit.js";
 import WizardPopoverTemplate from "./generated/templates/WizardPopoverTemplate.lit.js";
 import WizardCss from "./generated/themes/Wizard.css.js";
 import WizardPopoverCss from "./generated/themes/WizardPopover.css.js";
-
 
 const MIN_STEP_WIDTH_NO_TITLE = 64;
 const MIN_STEP_WIDTH_WITH_TITLE = 200;
@@ -62,6 +62,14 @@ const metadata = {
 			type: Float,
 		},
 
+		/**
+		 * Defines the height of the <code>ui5-wizard</code> content.
+		 * @private
+		 */
+		contentHeight: {
+			type: Float,
+		},
+
 		_groupedTabs: {
 			type: String,
 			multiple: true,
@@ -73,9 +81,9 @@ const metadata = {
 		 * <br><br>
 		 * <b>Note:</b> Use the available <code>ui5-wizard-step</code> component.
 		 *
-		 * @type {HTMLElement[]}
+		 * @type {sap.ui.webcomponents.fiori.IWizardStep[]}
 		 * @public
-		 * @slot
+		 * @slot steps
 		 */
 		"default": {
 			propertyName: "steps",
@@ -186,12 +194,21 @@ class Wizard extends UI5Element {
 		// Stores references to the grouped steps.
 		this._groupedTabs = [];
 
-		// Keeps track of the selected step index.
+		// Keeps track of the currently selected step index.
 		this.selectedStepIndex = 0;
+
+		// Keeps track of the previously selected step index.
+		this.previouslySelectedStepIndex = 0;
 
 		// Indicates that selection will be changed
 		// due to user click.
 		this.selectionRequestedByClick = false;
+
+		// Stores the previous width
+		this._prevWidth = 0;
+
+		// Stores the previous height
+		this._prevContentHeight = 0;
 
 		// Indicates that selection will be changed
 		// due to user scroll.
@@ -202,7 +219,7 @@ class Wizard extends UI5Element {
 			getItemsCallback: () => this.enabledStepsInHeaderDOM,
 		});
 
-		this._onResize = this.onResize.bind(this);
+		this._onStepResize = this.onStepResize.bind(this);
 
 		this.i18nBundle = getI18nBundle("@ui5/webcomponents");
 	}
@@ -259,19 +276,15 @@ class Wizard extends UI5Element {
 	}
 
 	static get CONTENT_TOP_OFFSET() {
-		return 80;
+		return 32;
 	}
 
 	static get staticAreaTemplate() {
 		return WizardPopoverTemplate;
 	}
 
-	onEnterDOM() {
-		ResizeHandler.register(this, this._onResize);
-	}
-
 	onExitDOM() {
-		ResizeHandler.deregister(this, this._onResize);
+		this.detachStepsResizeObserver();
 	}
 
 	onBeforeRendering() {
@@ -280,7 +293,13 @@ class Wizard extends UI5Element {
 
 	onAfterRendering() {
 		this.storeStepScrollOffsets();
-		this.scrollToSelectedStep();
+
+		if (this.previouslySelectedStepIndex !== this.selectedStepIndex) {
+			this.scrollToSelectedStep();
+		}
+
+		this.attachStepsResizeObserver();
+		this.previouslySelectedStepIndex = this.selectedStepIndex;
 	}
 
 	/**
@@ -387,7 +406,7 @@ class Wizard extends UI5Element {
 			return;
 		}
 
-		this.debounce(this.changeSelectionByScroll.bind(this, event.target.scrollTop), Wizard.SCROLL_DEBOUNCE_RATE);
+		debounce(this.changeSelectionByScroll.bind(this, event.target.scrollTop), Wizard.SCROLL_DEBOUNCE_RATE);
 	}
 
 	/**
@@ -397,21 +416,38 @@ class Wizard extends UI5Element {
 	 * @private
 	 */
 	onStepInHeaderFocused(event) {
-		this._itemNavigation.update(event.target);
+		this._itemNavigation.setCurrentItem(event.target);
 	}
 
 	/**
-	 * Handles component resize  to:
-	 * (1) trigger scroll scrollOffset reCalculation and syncSelection
-	 * (2) hide steps' separators and texts to free more space on small sizes
+	 * Handles resize in order to:
+	 * (1) sync steps' scroll offset and selection
+	 * (2) adapt navition step header
 	 * @private
 	 */
-	onResize() {
+	onStepResize() {
 		this.width = this.getBoundingClientRect().width;
+		this.contentHeight = this.getContentHeight();
 
-		if (this.responsivePopover && this.responsivePopover.opened) {
+		if (this._prevWidth !== this.width || this.contentHeight !== this._prevContentHeight) {
 			this._closeRespPopover();
 		}
+
+		this._prevWidth = this.width;
+		this._prevContentHeight = this.contentHeight;
+	}
+
+	attachStepsResizeObserver() {
+		this.stepsDOM.forEach(stepDOM => {
+			ResizeHandler.deregister(stepDOM, this._onStepResize);
+			ResizeHandler.register(stepDOM, this._onStepResize);
+		});
+	}
+
+	detachStepsResizeObserver() {
+		this.stepsDOM.forEach(stepDOM => {
+			ResizeHandler.deregister(stepDOM, this._onStepResize);
+		});
 	}
 
 	/**
@@ -514,8 +550,8 @@ class Wizard extends UI5Element {
 			this._groupedTabs.push(tabs[i]);
 		}
 
-		this.responsivePopover = await this._respPopover();
-		this.responsivePopover.open(oDomTarget);
+		const responsivePopover = await this._respPopover();
+		responsivePopover.open(oDomTarget);
 	}
 
 	async _onGroupedTabClick(event) {
@@ -540,8 +576,9 @@ class Wizard extends UI5Element {
 		tabs[newlySelectedIndex].focus();
 	}
 
-	_closeRespPopover() {
-		this.responsivePopover.close();
+	async _closeRespPopover() {
+		const responsivePopover = await this._respPopover();
+		responsivePopover && responsivePopover.close();
 	}
 
 	async _respPopover() {
@@ -597,6 +634,20 @@ class Wizard extends UI5Element {
 			// Change selection and fire "selection-change".
 			this.switchSelectionFromOldToNewStep(selectedStep, stepToSelect, newlySelectedIndex);
 		}
+	}
+
+	getContentHeight() {
+		let contentHeight = 0;
+
+		this.stepsDOM.forEach(step => {
+			contentHeight += step.getBoundingClientRect().height;
+		});
+
+		return contentHeight;
+	}
+
+	get stepsDOM() {
+		return Array.from(this.shadowRoot.querySelectorAll(".ui5-wiz-content-item"));
 	}
 
 	get _stepsInHeader() {
@@ -825,7 +876,7 @@ class Wizard extends UI5Element {
 			}
 		}
 
-		return 0;
+		return this.selectedStepIndex;
 	}
 
 	/**
@@ -848,18 +899,6 @@ class Wizard extends UI5Element {
 
 			this.selectedStepIndex = stepToSelectIndex;
 		}
-	}
-
-	/**
-	 * Delays function execution by given threshold - used to delay the scroll event handling.
-	 * @private
-	 */
-	debounce(fn, delay) {
-		clearTimeout(this.debounceInterval);
-		this.debounceInterval = setTimeout(() => {
-			this.debounceInterval = null;
-			fn();
-		}, delay);
 	}
 
 	/**

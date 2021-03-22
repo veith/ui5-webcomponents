@@ -59,7 +59,7 @@ const metadata = {
 		 * <ul>
 		 * <li><code>Group</code></li>
 		 * <li><code>Individual</code></li>
-		 * <ul>
+		 * </ul>
 		 * @type {AvatarGroupType}
 		 * @defaultValue "Group"
 		 * @public
@@ -79,7 +79,7 @@ const metadata = {
 		 * <li><code>M</code></li>
 		 * <li><code>L</code></li>
 		 * <li><code>XL</code></li>
-		 * <ul>
+		 * </ul>
 		 * @type {AvatarSize}
 		 * @defaultValue "S"
 		 * @public
@@ -100,9 +100,13 @@ const metadata = {
 	},
 	slots: /** @lends sap.ui.webcomponents.main.AvatarGroup.prototype */ {
 		/**
-		 * Defines the items of the <code>ui5-avatar-group</code>.
-		 * @type {HTMLElement[]}
-		 * @slot
+		 * Defines the items of the <code>ui5-avatar-group</code>. Use the <code>ui5-avatar</code> component as an item.
+		 * <br><br>
+		 * <b>Note:</b> The UX guidelines recommends using avatars with "Circle" shape.
+		 * Moreover, if you use avatars with "Square" shape, there will be visual inconsistency
+		 * as the built-in overflow action has "Circle" shape.
+		 * @type {sap.ui.webcomponents.main.IAvatar[]}
+		 * @slot items
 		 * @public
 		 */
 		"default": {
@@ -120,7 +124,7 @@ const metadata = {
 		* @public
 		* @since 1.0.0-rc.11
 		*/
-	   click: {
+		click: {
 			detail: {
 				targetRef: { type: HTMLElement },
 				overflowButtonClicked: { type: Boolean },
@@ -216,7 +220,7 @@ class AvatarGroup extends UI5Element {
 	}
 
 	/**
-	 * Returns an array containing the ui5-avatar instances that are currently not displayed due to lack of space.
+	 * Returns an array containing the <code>ui5-avatar</code> instances that are currently not displayed due to lack of space.
 	 * @readonly
 	 * @type { Array }
 	 * @defaultValue []
@@ -227,7 +231,7 @@ class AvatarGroup extends UI5Element {
 	}
 
 	/**
-	 * Returns an array containing the <code>AvatarBackgroundColor</code> values that correspond to the avatars in the <code>items</code> array.
+	 * Returns an array containing the <code>AvatarBackgroundColor</code> values that correspond to the avatars in the <code>ui5-avatar-group</code>.
 	 * @readonly
 	 * @type { Array }
 	 * @defaultValue []
@@ -380,7 +384,7 @@ class AvatarGroup extends UI5Element {
 
 	_onfocusin(event) {
 		const target = event.target;
-		this._itemNavigation.update(target);
+		this._itemNavigation.setCurrentItem(target);
 	}
 
 	/**

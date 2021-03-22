@@ -15,7 +15,7 @@ import dialogCSS from "./generated/themes/Dialog.css.js";
  */
 const metadata = {
 	tag: "ui5-dialog",
-	slots: /** @lends  sap.ui.webcomponents.main.Popup.prototype */ {
+	slots: /** @lends  sap.ui.webcomponents.main.Dialog.prototype */ {
 		/**
 		 * Defines the header HTML Element.
 		 *
@@ -132,7 +132,6 @@ const metadata = {
  * The <code>ui5-dialog</code> is usually displayed at the center of the screen.
  * Its position can be changed by the user. To enable this, you need to set the property <code>draggable</code> accordingly.
 
-
  *
  * <h3>Responsive Behavior</h3>
  * The <code>stretch</code> property can be used to stretch the
@@ -183,6 +182,18 @@ class Dialog extends Popup {
 		return [PopupsCommonCss, dialogCSS];
 	}
 
+	/**
+	 * Opens the dialog
+	 *
+	 * @param {boolean} preventInitialFocus prevents applying the focus inside the popup
+	 * @async
+	 * @returns {Promise} Resolves when the dialog is open
+	 * @public
+	 */
+	async open(preventInitialFocus) {
+		await super.open(preventInitialFocus);
+	}
+
 	get isModal() { // Required by Popup.js
 		return true;
 	}
@@ -223,11 +234,15 @@ class Dialog extends Popup {
 	}
 
 	onEnterDOM() {
+		super.onEnterDOM();
+
 		ResizeHandler.register(this, this._screenResizeHandler);
 		ResizeHandler.register(document.body, this._screenResizeHandler);
 	}
 
 	onExitDOM() {
+		super.onExitDOM();
+
 		ResizeHandler.deregister(this, this._screenResizeHandler);
 		ResizeHandler.deregister(document.body, this._screenResizeHandler);
 	}
@@ -374,26 +389,26 @@ class Dialog extends Popup {
 			newWidth = this._clamp(
 				this._initialWidth - (clientX - this._initialX),
 				this._minWidth,
-				this._initialLeft + this._initialWidth
+				this._initialLeft + this._initialWidth,
 			);
 
 			newLeft = this._clamp(
 				this._initialLeft + (clientX - this._initialX),
 				0,
-				this._initialX + this._initialWidth - this._minWidth
+				this._initialX + this._initialWidth - this._minWidth,
 			);
 		} else {
 			newWidth = this._clamp(
 				this._initialWidth + (clientX - this._initialX),
 				this._minWidth,
-				window.innerWidth - this._initialLeft
+				window.innerWidth - this._initialLeft,
 			);
 		}
 
 		const newHeight = this._clamp(
 			this._initialHeight + (clientY - this._initialY),
 			this._minHeight,
-			window.innerHeight - this._initialTop
+			window.innerHeight - this._initialTop,
 		);
 
 		Object.assign(this.style, {

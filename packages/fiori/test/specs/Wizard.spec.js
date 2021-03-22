@@ -1,7 +1,9 @@
 const assert = require("chai").assert;
 
 describe("Wizard general interaction", () => {
-	browser.url("http://localhost:8081/test-resources/pages/Wizard_test.html");
+	before(() => {
+		browser.url("http://localhost:8081/test-resources/pages/Wizard_test.html");
+	});
 
 	it("test initial selection", () => {
 		const wiz = browser.$("#wizTest");
@@ -25,7 +27,7 @@ describe("Wizard general interaction", () => {
 
 		// act - the click handler calls the API
 		btnToStep2.click();
-		
+
 		// assert - that first step in the content and in the header are not selected
 		assert.strictEqual(step1.getAttribute("selected"), null,
 			"First step in the content is not selected.");
@@ -92,7 +94,7 @@ describe("Wizard general interaction", () => {
 		// assert - that first step in the content and in the header are not selected
 		assert.strictEqual(step1.getAttribute("selected"), null, "First step in the content is not selected.");
 		assert.strictEqual(step1InHeader.getAttribute("selected"), null, "First step  in the header not is selected.");
-		
+
 		// assert - that second step in the content and in the header are properly selected
 		assert.strictEqual(step2.getAttribute("selected"), "true",
 			"Second step in the content is selected.");
@@ -150,6 +152,90 @@ describe("Wizard general interaction", () => {
 		assert.strictEqual(step2InHeader.getAttribute("disabled"), null, "Second step in header is enabled.");
 
 		assert.strictEqual(inpSelectionChangeCounter.getProperty("value"), "4",
-			"Event selection-change fired 4rd time due to scrolling.");
+			"Event selection-change fired 4th time due to scrolling.");
+	});
+
+	it("tests dynamically increase step size and move to next step", () => {
+		const wiz = browser.$("#wizTest");
+		const sw = browser.$("#sw");
+		const btnToStep2 = browser.$("#toStep22");
+		const btnToStep3 = browser.$("#toStep3");
+		const step3 = browser.$("#st3");
+		const step3InHeader = wiz.shadow$(`[data-ui5-index="3"]`);
+		const inpSelectionChangeCounter =  browser.$("#inpSelectionChangeCounter");
+
+		btnToStep3.click(); // click to enable step 3
+		btnToStep2.click(); // click to get back to step 2
+		sw.click(); // click to dynamically expand content in step 2
+		step3.scrollIntoView(); // scroll to step 3
+		browser.pause(500);
+
+		assert.strictEqual(step3.getAttribute("selected"), "true",
+			"Third step in the content is selected.");
+		assert.strictEqual(step3InHeader.getAttribute("selected"), "true",
+			"Third step in the header is selected.");
+		assert.strictEqual(inpSelectionChangeCounter.getProperty("value"), "5",
+			"Event selection-change fired once for 5th time due to scrolling.");
+	});
+
+	it("tests no scrolling to selected step, if the selection was not changed", ()=>{
+		browser.url("http://localhost:8081/test-resources/pages/Wizard_test.html");
+
+		const wizard = browser.$("#wizTest");
+		const wizardContentDOM = wizard.shadow$(".ui5-wiz-content");
+		const btnToStep2 = browser.$("#toStep2");
+
+		// (1) - go to step 2
+		btnToStep2.click();
+
+		// (2) - scroll a bit upwards to get back to step 1 (at least its bottom part)
+		btnToStep2.scrollIntoView();
+
+		// (3) store the scroll position after scrolling upwards
+		const scrolPosBefore = browser.execute((wizardContentDOM) => {
+			return wizardContentDOM.scrollTop
+		}, wizardContentDOM);
+
+		// (4) simulate re-rendering
+		browser.execute((wizard) => {
+			wizard.onAfterRendering();
+		}, wizard);
+
+		// (5) store the scroll position after re-rendering
+		const scrolPosAfter = browser.execute((wizardContentDOM) => {
+			return wizardContentDOM.scrollTop
+		}, wizardContentDOM);
+
+		// assert - The Wizard did not scroll to the very top of the step 1
+		assert.strictEqual(scrolPosBefore, scrolPosAfter,
+			"No scrolling occures after re-rendering when the selected step remains the same.");
+	});
+
+	it("tests small screen", ()=>{
+		browser.url("http://localhost:8081/test-resources/pages/Wizard_test_mobile.html");
+
+		const wizard = browser.$("#wizTest");
+		const wizardDisabled = browser.$("#wizTest2");
+		const groupedStep = wizard.shadow$(`[data-ui5-index="3"]`);
+		const groupedStepDisabled = wizardDisabled.shadow$(`[data-ui5-index="3"]`);
+		
+		// act - click on the stack of steps
+		groupedStep.shadow$(`.ui5-wiz-step-root`).click();
+
+		const staticAreaItemClassName = browser.getStaticAreaItemClassName("#wizTest")
+		const popover = browser.$(`.${staticAreaItemClassName}`).shadow$("ui5-responsive-popover");
+
+		// assert - the popup is open
+		assert.ok(popover.isDisplayedInViewport(), "Popover is opened.");
+
+
+		// act - click on the disabled stack of steps
+		groupedStepDisabled.shadow$(`.ui5-wiz-step-root`).click();
+
+		const staticAreaItemClassName2 = browser.getStaticAreaItemClassName("#wizTest2")
+		const disabledPopover = browser.$(`.${staticAreaItemClassName2}`).shadow$("ui5-responsive-popover");
+
+		// assert - the popup is open
+		assert.ok(disabledPopover.isDisplayedInViewport(), "Popover is opened.");
 	});
 });

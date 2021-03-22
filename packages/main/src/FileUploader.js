@@ -153,7 +153,7 @@ const metadata = {
 		 * By default the <code>ui5-file-uploader</code> contains a single input field. With this slot you can pass any content that you wish to add. See the samples for more information.
 		 *
 		 * @type {HTMLElement[]}
-		 * @slot
+		 * @slot content
 		 * @public
 		 */
 		"default": {
@@ -175,6 +175,17 @@ const metadata = {
 		 * @public
 		 */
 		valueStateMessage: {
+			type: HTMLElement,
+		},
+
+		/**
+		 * The slot is used to render native <code>input</code> HTML element within Light DOM to enable form submit,
+		 * when <code>name</code> property is set.
+		 * @type {HTMLElement[]}
+		 * @slot
+		 * @private
+		 */
+		formSupport: {
 			type: HTMLElement,
 		},
 	},
@@ -319,7 +330,7 @@ class FileUploader extends UI5Element {
 					(element, nativeInput) => {
 						nativeInput.disabled = element.disabled;
 					},
-					this._onChange.bind(this)
+					this._onChange.bind(this),
 				);
 			}
 		} else if (this.name) {

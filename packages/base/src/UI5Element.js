@@ -16,7 +16,9 @@ import { kebabToCamelCase, camelToKebabCase } from "./util/StringHelper.js";
 import isValidPropertyName from "./util/isValidPropertyName.js";
 import { isSlot, getSlotName, getSlottedElementsList } from "./util/SlotsHelper.js";
 import arraysAreEqual from "./util/arraysAreEqual.js";
+import getClassCopy from "./util/getClassCopy.js";
 import { markAsRtlAware } from "./locale/RTLAwareRegistry.js";
+import isLegacyBrowser from "./isLegacyBrowser.js";
 
 let autoId = 0;
 
@@ -441,7 +443,7 @@ class UI5Element extends HTMLElement {
 	 * @private
 	 */
 	_initializeState() {
-		this._state = Object.assign({}, this.constructor.getMetadata().getInitialState());
+		this._state = { ...this.constructor.getMetadata().getInitialState() };
 	}
 
 	/**
@@ -623,8 +625,17 @@ class UI5Element extends HTMLElement {
 			return;
 		}
 
+		this._assertShadowRootStructure();
+
 		return this.shadowRoot.children.length === 1
 			? this.shadowRoot.children[0] : this.shadowRoot.children[1];
+	}
+
+	_assertShadowRootStructure() {
+		const expectedChildrenCount = document.adoptedStyleSheets || isLegacyBrowser() ? 1 : 2;
+		if (this.shadowRoot.children.length !== expectedChildrenCount) {
+			console.warn(`The shadow DOM for ${this.constructor.getMetadata().getTag()} does not have a top level element, the getDomRef() method might not work as expected`); // eslint-disable-line
+		}
 	}
 
 	/**
@@ -770,10 +781,17 @@ class UI5Element extends HTMLElement {
 	}
 
 	/**
+	 * @private
+	 */
+	static _needsStaticArea() {
+		return !!this.staticAreaTemplate;
+	}
+
+	/**
 	 * @public
 	 */
 	getStaticAreaItemDomRef() {
-		if (!this.constructor.staticAreaTemplate) {
+		if (!this.constructor._needsStaticArea()) {
 			throw new Error("This component does not use the static area");
 		}
 
@@ -980,9 +998,8 @@ class UI5Element extends HTMLElement {
 			window.customElements.define(tag, this);
 
 			if (altTag && !customElements.get(altTag)) {
-				class oldClassName extends this {}
 				registerTag(altTag);
-				window.customElements.define(altTag, oldClassName);
+				window.customElements.define(altTag, getClassCopy(this));
 			}
 		}
 		return this;
